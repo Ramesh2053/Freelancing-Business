@@ -1,0 +1,6 @@
+{
+  "name": "FreelanceFactory",
+  "description": "Connecting talent with meaningful opportunities: a global freelance marketplace with escrow payments, rating systems, and real-time project collaboration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
