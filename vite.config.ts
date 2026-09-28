@@ -8,6 +8,7 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
+        '@insforge/shared-schemas': path.resolve(__dirname, './src/shims/insforge-shared-schemas.ts'),
         '@': path.resolve(__dirname, '.'),
       },
     },

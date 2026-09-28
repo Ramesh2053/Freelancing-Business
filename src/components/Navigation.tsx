@@ -41,6 +41,8 @@ export const Navigation: React.FC<NavigationProps> = ({ onNavigate, currentPage 
     ]
   ) : [
     { id: 'home', name: 'Home' },
+    { id: 'browse_freelancers', name: 'Find Talent', icon: Users },
+    { id: 'browse_jobs', name: 'Browse Jobs', icon: Briefcase },
     { id: 'about', name: 'About' },
     { id: 'how_it_works', name: 'How It Works' },
     { id: 'contact', name: 'Contact' },

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { KeyRound, Mail, Phone, UserCheck, Eye, EyeOff, ShieldCheck, HelpCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { KeyRound, Mail, Phone, UserCheck, Eye, EyeOff, ArrowRight, CheckCircle2, Loader2, Info, RefreshCw, ArrowLeft } from 'lucide-react';
 
 interface AuthViewProps {
   onNavigate: (page: string, params?: any) => void;
@@ -14,7 +14,7 @@ interface AuthViewProps {
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'login', initialRole = 'freelancer' }) => {
-  const { signUp, login, verifyOTP } = useApp();
+  const { signUp, login, sendVerificationCode, verifyEmailCode } = useApp();
 
   const [activeTab, setActiveTab] = useState<'login' | 'register'>(initialTab);
   const [role, setRole] = useState<'freelancer' | 'client'>(initialRole);
@@ -30,17 +30,32 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
 
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  
-  // OTP simulation states
-  const [otpStage, setOtpStage] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpNotice, setOtpNotice] = useState<string | null>(null);
-  const [otpSuccess, setOtpSuccess] = useState(false);
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [showForgotTip, setShowForgotTip] = useState(false);
+
+  // Email verification screen state
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
     setActiveTab(initialTab);
     setRole(initialRole);
+    setAuthError(null);
+    setAuthSuccess(null);
+    setIsVerifying(false);
   }, [initialTab, initialRole]);
+
+  // Handle resend countdown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -60,79 +75,143 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
       agree_terms: false
     });
     setAuthError(null);
+    setAuthSuccess(null);
+    setIsVerifying(false);
+    setVerificationCode('');
   };
 
-  const runLogin = (e: React.FormEvent) => {
+  const runLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
+    setAuthSuccess(null);
+    setSubmitting(true);
 
-    const result = login(formData.email, formData.password, true);
-    if (result.success) {
-      if (result.user) {
-        if (!result.user.is_verified) {
-          // Trigger OTP stage
-          setOtpStage(true);
-          setOtpNotice(`Simulated OTP Verification: We sent a 6-digit passcode to your email. Check your simulated status banner below!`);
-        } else {
+    try {
+      const result = await login(formData.email, formData.password, true);
+      if (result.requiresVerification) {
+        setVerificationEmail(result.email || formData.email.trim());
+        setIsVerifying(true);
+        setResendCooldown(45);
+        setAuthSuccess('A 6-digit verification code has been sent to your email. Please enter it below.');
+      } else if (result.success) {
+        setAuthSuccess('Welcome back! Logging you in...');
+        setTimeout(() => {
           onNavigate('dashboard');
-        }
+        }, 500);
+      } else {
+        setAuthError(result.error || 'Authentication failure. Please check your credentials.');
       }
-    } else {
-      setAuthError(result.error || 'Authentication failure.');
+    } catch (err: any) {
+      setAuthError(err.message || 'An unexpected error occurred during sign in.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const runSignUp = (e: React.FormEvent) => {
+  const runSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
+    setAuthSuccess(null);
 
     if (formData.password !== formData.confirm_password) {
-      setAuthError('Passwords do not match.');
+      setAuthError('Passwords do not match. Please verify.');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setAuthError('Password should be at least 6 characters long.');
       return;
     }
 
     if (!formData.agree_terms) {
-      setAuthError('You must agree to the Terms of Service and Privacy Policy.');
+      setAuthError('Please agree to the Terms of Service and Privacy Policy to continue.');
       return;
     }
 
-    const signupData = {
-      full_name: formData.full_name,
-      email: formData.email,
-      phone_number: formData.phone_number,
-      password: formData.password,
-      role
-    };
+    setSubmitting(true);
+    try {
+      const signupData = {
+        full_name: formData.full_name,
+        email: formData.email,
+        phone_number: formData.phone_number,
+        password: formData.password,
+        role
+      };
 
-    const result = signUp(signupData);
-    if (result.success) {
-      // Trigger Email OTP simulation stage
-      setOtpStage(true);
-      setOtpNotice(`Simulated OTP sent! Copy and use the passcode from the simulator notify badge to verify.`);
-    } else {
-      setAuthError(result.error || 'Signup failed.');
+      const result = await signUp(signupData);
+      if (result.requiresVerification) {
+        setVerificationEmail(result.email || formData.email.trim().toLowerCase());
+        setIsVerifying(true);
+        setResendCooldown(45);
+        setAuthSuccess('Account registered! A 6-digit confirmation code was sent to your email.');
+      } else if (result.success) {
+        setAuthSuccess('Account created! Taking you to profile setup...');
+        setTimeout(() => {
+          onNavigate('profile_setup');
+        }, 800);
+      } else {
+        setAuthError(result.error || 'Signup failed. Please try again.');
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Could not complete registration. Please check your details.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleOTPVerify = (e: React.FormEvent) => {
+  const handleVerifyCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
+    setAuthSuccess(null);
 
-    const isVerified = verifyOTP(formData.email, otpCode);
-    if (isVerified) {
-      setOtpSuccess(true);
-      setTimeout(() => {
-        setOtpStage(false);
-        setOtpSuccess(false);
-        // Automatically route to Profile Setup view
-        onNavigate('profile_setup');
-      }, 1500);
-    } else {
-      setAuthError('Invalid passcode. Please use the simulated code "123456" to proceed.');
+    if (!verificationCode.trim()) {
+      setAuthError('Please enter the 6-digit code received in your email.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await verifyEmailCode(verificationEmail, verificationCode);
+      if (result.success) {
+        setAuthSuccess('Email verified successfully! Loading your workspace...');
+        setTimeout(() => {
+          if (role === 'freelancer') {
+            onNavigate('profile_setup');
+          } else {
+            onNavigate('dashboard');
+          }
+        }, 1000);
+      } else {
+        setAuthError(result.error || 'Invalid or expired code. Please check your email or request a new code.');
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Failed to verify code.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  // Switch tabs
+  const handleResendCode = async () => {
+    if (resendCooldown > 0 || !verificationEmail) return;
+    setAuthError(null);
+    setAuthSuccess(null);
+    setSubmitting(true);
+
+    try {
+      const res = await sendVerificationCode(verificationEmail);
+      if (res.success) {
+        setAuthSuccess(res.message || 'A new verification code has been sent to your email.');
+        setResendCooldown(60);
+      } else {
+        setAuthError(res.error || 'Could not send verification code.');
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Error requesting code resend.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const toggleAuthMode = (mode: 'login' | 'register') => {
     setActiveTab(mode);
     clearForm();
@@ -140,39 +219,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gray-50/50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative">
-      
-      {/* SIMULATED OTP NOTIFICATION ACCORDION BUBBLE AT THE TOP */}
-      {otpStage && (
-        <div className="max-w-md mx-auto w-full mb-6 bg-gradient-to-r from-blue-900 to-indigo-950 text-white rounded-xl p-5 shadow-lg relative border border-blue-500 animate-slideDown">
-          <div className="flex items-start space-x-3 text-left">
-            <span className="text-xl">✉️</span>
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-secondary-orange font-mono">Simulated Email Inbox</h4>
-              <p className="text-xs text-blue-100 mt-1 body-font">
-                To simplify verification testing inside the preview environment, we have intercepted the verification pipeline!
-              </p>
-              <div className="mt-3 bg-white/10 rounded-lg p-2.5 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] text-gray-300">Your verification passcode is:</div>
-                  <div className="text-base font-extrabold tracking-widest text-[#10B981] font-mono">123456</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOtpCode('123456')}
-                  className="bg-white hover:bg-gray-100 text-primary-blue text-[11px] font-bold px-3 py-1.5 rounded-md transition select-none"
-                >
-                  Autofill Code
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="sm:mx-auto sm:w-full sm:max-w-md bg-white border border-gray-150 p-8 rounded-2xl shadow-sm">
         
-        {/* TAB HEADERS */}
-        {!otpStage && (
+        {/* TAB HEADERS (Hidden when in verification step) */}
+        {!isVerifying && (
           <div className="flex justify-center border-b border-gray-100 pb-5 mb-6">
             <button
               onClick={() => toggleAuthMode('login')}
@@ -194,68 +244,137 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
         )}
 
         {/* LOGO & DESCRIPTIONS */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <span className="text-2xl font-black heading-font text-primary-blue">
             Freelance<span className="text-secondary-orange">Factory</span>
           </span>
           <p className="text-xs text-gray-400 font-mono tracking-widest uppercase mt-1">
-            {otpStage ? 'Security Verification' : activeTab === 'login' ? 'Welcome back to work' : 'Register your secure profile'}
+            {isVerifying ? 'Email Security Verification' : activeTab === 'login' ? 'Welcome back to work' : 'Register your secure profile'}
           </p>
         </div>
 
-        {/* ERROR DISPLAY */}
-        {authError && (
-          <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold p-3.5 rounded-lg text-left">
-            ⚠️ {authError}
+        {/* SUCCESS NOTIFICATION */}
+        {authSuccess && (
+          <div className="mb-5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold p-3.5 rounded-lg text-left flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{authSuccess}</span>
           </div>
         )}
 
-        {/* OTP VERIFICATION VIEW CONTAINER */}
-        {otpStage ? (
-          <form onSubmit={handleOTPVerify} className="space-y-6 text-left animate-fadeIn">
-            {otpSuccess ? (
-              <div className="text-center py-6 space-y-3">
-                <CheckCircle2 className="w-12 h-12 text-[#10B981] mx-auto animate-bounce" />
-                <h3 className="text-lg font-bold text-gray-950 heading-font">Email Verified!</h3>
-                <p className="text-xs text-gray-500 body-font">Setting up your profile folder parameters...</p>
+        {/* ERROR NOTIFICATION */}
+        {authError && (
+          <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold p-3.5 rounded-lg text-left flex items-start gap-2">
+            <span className="text-sm shrink-0">⚠️</span>
+            <span className="leading-relaxed">{authError}</span>
+          </div>
+        )}
+
+        {/* FORGOT PASSWORD INLINE TIP */}
+        {showForgotTip && (
+          <div className="mb-5 bg-blue-50 border border-blue-200 text-blue-800 text-xs p-3.5 rounded-lg text-left flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Password assistance</p>
+                <p className="text-[11px] text-blue-700 mt-0.5">
+                  If you forgot your password, contact support or register with your email address to receive a secure login code.
+                </p>
               </div>
-            ) : (
-              <>
-                <div className="bg-blue-50 border border-blue-100 text-blue-800 text-xs p-3.5 rounded-lg">
-                  {otpNotice}
-                </div>
+            </div>
+            <button 
+              type="button" 
+              onClick={() => setShowForgotTip(false)}
+              className="text-xs font-bold text-blue-500 hover:text-blue-800"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 font-mono">6-Digit Verification Code</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    value={otpCode}
-                    onChange={e => setOtpCode(e.target.value)}
-                    placeholder="Enter 123456"
-                    className="w-full text-center tracking-widest text-lg font-extrabold px-4 py-3.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
-                  />
-                </div>
+        {/* SCREEN 1: VERIFICATION CODE FORM */}
+        {isVerifying ? (
+          <form onSubmit={handleVerifyCodeSubmit} className="space-y-5 text-left animate-fadeIn">
+            <div className="text-center py-2">
+              <div className="w-14 h-14 bg-blue-50 text-primary-blue rounded-full flex items-center justify-center mx-auto mb-3 shadow-inner">
+                <Mail className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900">Check Your Email</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                We sent a 6-digit confirmation code to:
+              </p>
+              <p className="text-xs font-bold text-primary-blue mt-0.5 font-mono">
+                {verificationEmail}
+              </p>
+            </div>
 
-                <button
-                  type="submit"
-                  className="w-full py-3.5 bg-primary-blue hover:bg-blue-950 text-white font-bold text-sm rounded-xl transition shadow"
-                >
-                  Verify Email
-                </button>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono text-center">
+                6-Digit Verification Code
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={6}
+                value={verificationCode}
+                onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="123456"
+                autoFocus
+                className="w-full text-center tracking-[0.3em] text-2xl font-black px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue font-mono transition"
+              />
+              <p className="text-[11px] text-gray-400 text-center mt-2">
+                Tip: If you don't see it in a few seconds, check your spam or junk folder.
+              </p>
+            </div>
 
-                <div className="text-center text-xs text-gray-400">
-                  Didn't receive a simulated email? Use simulated code <span className="font-bold text-gray-600">123456</span> to proceed.
-                </div>
-              </>
-            )}
+            <button
+              type="submit"
+              disabled={submitting || verificationCode.length < 6}
+              className="w-full py-3.5 bg-primary-blue hover:bg-blue-950 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center space-x-1.5 disabled:opacity-50"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Verifying Code...</span>
+                </>
+              ) : (
+                <>
+                  <span>Verify & Continue</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsVerifying(false);
+                  setVerificationCode('');
+                }}
+                className="text-gray-500 hover:text-gray-800 flex items-center gap-1 font-medium"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResendCode}
+                disabled={resendCooldown > 0 || submitting}
+                className="text-secondary-orange hover:text-orange-700 font-bold flex items-center gap-1 disabled:opacity-50 disabled:hover:text-secondary-orange"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${submitting ? 'animate-spin' : ''}`} />
+                <span>
+                  {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
+                </span>
+              </button>
+            </div>
           </form>
         ) : activeTab === 'login' ? (
-          /* LOGIN FLOW */
+          /* SCREEN 2: LOGIN FLOW */
           <form onSubmit={runLogin} className="space-y-5 text-left animate-fadeIn">
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono">Email / Phone</label>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono">Email or Phone</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3.5 w-4.5 h-4.5 text-gray-300" />
                 <input
@@ -272,10 +391,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
 
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest font-mono">Secret Password</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest font-mono">Password</label>
                 <button
                   type="button"
-                  onClick={() => alert('For simulation support, any password is valid! Matched profiles will instantly sync.')}
+                  onClick={() => setShowForgotTip(prev => !prev)}
                   className="text-[11px] font-semibold text-secondary-orange hover:underline focus:outline-none"
                 >
                   Forgot Password?
@@ -316,10 +435,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
 
             <button
               type="submit"
-              className="w-full py-3.5 bg-primary-blue hover:bg-blue-950 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center space-x-1.5"
+              disabled={submitting}
+              className="w-full py-3.5 bg-primary-blue hover:bg-blue-950 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center space-x-1.5 disabled:opacity-75"
             >
-              <span>Sign In to Factory</span>
-              <ArrowRight className="w-4 h-4" />
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Signing In...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In to Factory</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
 
             <div className="text-center pt-2">
@@ -333,14 +462,40 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
               </button>
             </div>
             
-            <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 text-[11px] text-gray-400 leading-normal text-center">
-              <span className="font-bold text-gray-500 uppercase tracking-wider block mb-1">Quick Preview Profiles</span>
-              Client: <span className="text-primary-blue font-bold">bishal@factory.com</span> (pass: anything)<br/>
-              Client Company: <span className="text-primary-blue font-bold">suresh@synergy.com</span> (pass: anything)
+            <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-150 text-[11px] text-gray-500 leading-normal text-center space-y-2">
+              <span className="font-bold text-gray-600 uppercase tracking-wider block font-mono text-[10px]">1-Click Quick Demo Access</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => ({ ...prev, email: 'bishal@factory.com', password: 'password123' }));
+                    login('bishal@factory.com', 'password123', true).then(res => {
+                      if (res.success) onNavigate('dashboard');
+                    });
+                  }}
+                  className="py-2 px-2 bg-white hover:bg-blue-50 border border-gray-200 hover:border-primary-blue text-primary-blue rounded-lg font-bold text-xs transition shadow-xs flex flex-col items-center"
+                >
+                  <span className="text-[10px] uppercase font-mono text-gray-400">Freelancer</span>
+                  <span>Bishal Shrestha</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => ({ ...prev, email: 'suresh@synergy.com', password: 'password123' }));
+                    login('suresh@synergy.com', 'password123', true).then(res => {
+                      if (res.success) onNavigate('dashboard');
+                    });
+                  }}
+                  className="py-2 px-2 bg-white hover:bg-orange-50 border border-gray-200 hover:border-secondary-orange text-secondary-orange rounded-lg font-bold text-xs transition shadow-xs flex flex-col items-center"
+                >
+                  <span className="text-[10px] uppercase font-mono text-gray-400">Client</span>
+                  <span>Suresh Maharjan</span>
+                </button>
+              </div>
             </div>
           </form>
         ) : (
-          /* REGISTRATION FLOW */
+          /* SCREEN 3: REGISTRATION FLOW */
           <form onSubmit={runSignUp} className="space-y-4 text-left animate-fadeIn">
             {/* ROLE TOGGLE TABS */}
             <div>
@@ -368,66 +523,74 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 font-mono">Full Name / Enterprise Name</label>
-              <input
-                type="text"
-                name="full_name"
-                required
-                value={formData.full_name}
-                onChange={handleInputChange}
-                placeholder="e.g. Sujata Adhikari"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
-              />
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono">Full Name</label>
+              <div className="relative">
+                <UserCheck className="absolute left-3 top-3.5 w-4 h-4 text-gray-300" />
+                <input
+                  type="text"
+                  name="full_name"
+                  required
+                  value={formData.full_name}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Ramesh Paudel"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 font-mono">Email Address</label>
-              <input
-                type="email"
-                name="email"
-                required
-                value={formData.email}
-                onChange={handleInputChange}
-                placeholder="sujata@example.com"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
-              />
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono">Email Address</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3.5 w-4 h-4 text-gray-300" />
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  placeholder="e.g. yourname@gmail.com"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 font-mono">Phone Number</label>
-              <input
-                type="text"
-                name="phone_number"
-                required
-                value={formData.phone_number}
-                onChange={handleInputChange}
-                placeholder="e.g. 9841223344"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
-              />
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono">Phone Number (Optional)</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-3.5 w-4 h-4 text-gray-300" />
+                <input
+                  type="tel"
+                  name="phone_number"
+                  value={formData.phone_number}
+                  onChange={handleInputChange}
+                  placeholder="+977 9800000000"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 font-mono">Password</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono">Password</label>
                 <input
                   type="password"
                   name="password"
                   required
                   value={formData.password}
                   onChange={handleInputChange}
-                  placeholder="••••••••"
+                  placeholder="At least 6 chars"
                   className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 font-mono">Validate Password</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-mono">Confirm</label>
                 <input
                   type="password"
                   name="confirm_password"
                   required
                   value={formData.confirm_password}
                   onChange={handleInputChange}
-                  placeholder="••••••••"
+                  placeholder="Re-enter password"
                   className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/30 focus:border-primary-blue transition"
                 />
               </div>
@@ -450,10 +613,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onNavigate, initialTab = 'lo
 
             <button
               type="submit"
-              className="w-full py-3.5 bg-secondary-orange hover:bg-orange-600 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center space-x-1"
+              disabled={submitting}
+              className="w-full py-3.5 bg-secondary-orange hover:bg-orange-600 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center space-x-1.5 disabled:opacity-75"
             >
-              <span>Verify & Sign Up</span>
-              <ArrowRight className="w-4 h-4" />
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Sending Verification Code...</span>
+                </>
+              ) : (
+                <>
+                  <span>Create Account & Send Code</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
 
             <div className="text-center pt-2">

@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Sparkles, Camera, Check, Briefcase, Award, Languages, Globe } from 'lucide-react';
+import { Sparkles, Camera, Check, Briefcase, Award, Languages, Globe, Upload, Loader2 } from 'lucide-react';
+import { uploadToStorage } from '../../lib/insforge';
 
 interface ProfileSetupViewProps {
   onNavigate: (page: string, params?: any) => void;
@@ -52,8 +53,22 @@ export const ProfileSetupView: React.FC<ProfileSetupViewProps> = ({ onNavigate }
   const [companyDescription, setCompanyDescription] = useState('');
   const [clientLocation, setClientLocation] = useState('Kathmandu, West Nepal');
 
-  // Simulated avatar URL
+  // Avatar URL & Storage
   const [avatarUrl, setAvatarUrl] = useState(currentUser.profile_photo_url);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setUploadingAvatar(true);
+      const res = await uploadToStorage(file, 'avatars');
+      setUploadingAvatar(false);
+      if (res?.url) {
+        setAvatarUrl(res.url);
+      }
+    }
+  };
 
   const handleSkillToggle = (skill: string) => {
     if (selectedSkills.includes(skill)) {
@@ -147,9 +162,9 @@ export const ProfileSetupView: React.FC<ProfileSetupViewProps> = ({ onNavigate }
 
         <form onSubmit={handleSubmit} className="space-y-8 text-left">
           
-          {/* PROFILE PHOTO SIMULATION */}
+          {/* PROFILE PHOTO & UPLOAD */}
           <div className="bg-gray-50 p-6 rounded-xl border border-gray-150 text-center flex flex-col items-center">
-            <div className="relative group cursor-pointer" onClick={handleSimulatedAvatarChange}>
+            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
               <img 
                 src={avatarUrl} 
                 alt="Avatar" 
@@ -157,11 +172,36 @@ export const ProfileSetupView: React.FC<ProfileSetupViewProps> = ({ onNavigate }
                 referrerPolicy="no-referrer"
               />
               <div className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary-blue text-white flex items-center justify-center border-2 border-white shadow">
-                <Camera className="w-4 h-4" />
+                {uploadingAvatar ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               </div>
             </div>
-            <h4 className="text-sm font-bold text-gray-800 heading-font mt-3">Profile Avatar Simulation</h4>
-            <p className="text-[11px] text-gray-400 mt-0.5">Click directly on the image bubble above to cycle and test various photos!</p>
+            <input 
+              ref={fileInputRef} 
+              type="file" 
+              accept="image/*" 
+              onChange={handleFileUpload} 
+              className="hidden" 
+            />
+            <h4 className="text-sm font-bold text-gray-800 heading-font mt-3">Profile Photo</h4>
+            <div className="flex items-center gap-2 mt-2">
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={uploadingAvatar}
+                className="text-xs bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{uploadingAvatar ? 'Uploading to Storage...' : 'Upload Image'}</span>
+              </button>
+              <button 
+                type="button" 
+                onClick={handleSimulatedAvatarChange} 
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1.5 transition"
+              >
+                Choose Preset
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">Upload a custom image to InsForge Storage, or choose a preset photo.</p>
           </div>
 
           {isFreelancer ? (

@@ -7,8 +7,12 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Search, SlidersHorizontal, MapPin, DollarSign, Calendar, Inbox, ArrowRight } from 'lucide-react';
 
-export const BrowseJobsView: React.FC = () => {
-  const { jobs, users, onNavigate } = useApp();
+interface BrowseJobsViewProps {
+  onNavigate: (page: string, params?: any) => void;
+}
+
+export const BrowseJobsView: React.FC<BrowseJobsViewProps> = ({ onNavigate }) => {
+  const { jobs, users } = useApp();
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');

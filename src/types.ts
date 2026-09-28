@@ -92,8 +92,10 @@ export interface Message {
   sender_id: string;
   receiver_id: string;
   text: string;
+  message_text?: string;
   attachment_url?: string;
   timestamp: string;
+  created_at?: string;
   is_read: boolean;
 }
 

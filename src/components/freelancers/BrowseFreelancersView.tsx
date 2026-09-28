@@ -5,12 +5,16 @@
 
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Search, MapPin, Star, Award, Compass, Inbox, ArrowRight, UserCheck } from 'lucide-react';
+import { Search, MapPin, Star, Award, Compass, Inbox, ArrowRight, UserCheck, MessageSquare } from 'lucide-react';
 
 const SKILL_SHORTCUTS = ['Figma', 'React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Logo Design', 'Brand Identity', 'Copywriting'];
 
-export const BrowseFreelancersView: React.FC = () => {
-  const { freelanceDetails, users, onNavigate } = useApp();
+interface BrowseFreelancersViewProps {
+  onNavigate: (page: string, params?: any) => void;
+}
+
+export const BrowseFreelancersView: React.FC<BrowseFreelancersViewProps> = ({ onNavigate }) => {
+  const { freelanceDetails, users } = useApp();
 
   // Filter conditions
   const [searchTerm, setSearchTerm] = useState('');
@@ -159,21 +163,31 @@ export const BrowseFreelancersView: React.FC = () => {
                       <div className="space-y-4">
                         
                         {/* HEAD CARD ROW */}
-                        <div className="flex items-center space-x-3.5">
+                        <div 
+                          onClick={() => onNavigate('freelancer_profile', { userId: fDetail.freelancer_id })}
+                          className="flex items-center space-x-3.5 cursor-pointer group"
+                        >
                           <img 
                             src={user.profile_photo_url} 
                             alt={user.full_name} 
-                            className="w-12 h-12 rounded-full object-cover border border-gray-150"
+                            className="w-12 h-12 rounded-full object-cover border border-gray-150 group-hover:ring-2 group-hover:ring-primary-blue/40 transition shrink-0"
                             referrerPolicy="no-referrer"
                           />
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center space-x-1.5">
-                              <h4 className="font-bold text-gray-950 heading-font text-sm">{user.full_name}</h4>
+                              <h4 className="font-bold text-gray-950 heading-font text-sm group-hover:text-primary-blue transition truncate">{user.full_name}</h4>
                               {fDetail.availability_status === 'Available' && (
-                                <span className="w-2 h-2 rounded-full bg-green-500 animate-ping shrink-0" />
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Available Immediately" />
                               )}
                             </div>
-                            <p className="text-xs text-secondary-orange font-bold font-mono line-clamp-1">{fDetail.headline}</p>
+                            <p className="text-xs text-secondary-orange font-bold font-mono line-clamp-1">
+                              {fDetail.headline || 'Verified Creative Specialist'}
+                            </p>
+                            <div className="flex items-center space-x-1 text-xs text-amber-500 font-bold mt-0.5">
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                              <span>{fDetail.average_rating ? fDetail.average_rating.toFixed(1) : '5.0'}</span>
+                              <span className="text-[10px] text-gray-400 font-normal">({fDetail.total_reviews || 0} reviews)</span>
+                            </div>
                           </div>
                         </div>
 
@@ -184,20 +198,20 @@ export const BrowseFreelancersView: React.FC = () => {
 
                         {/* SKILLS */}
                         <div className="flex flex-wrap gap-1">
-                          {fDetail.skills.slice(0, 4).map(skill => (
+                          {(fDetail.skills && fDetail.skills.length > 0 ? fDetail.skills : ['Web Design', 'Development', 'Remote Collaboration']).slice(0, 4).map(skill => (
                             <span key={skill} className="bg-gray-50 text-gray-600 font-bold text-[10px] px-2 py-0.5 rounded border border-gray-100">
                               {skill}
                             </span>
                           ))}
-                          {fDetail.skills.length > 4 && (
+                          {fDetail.skills && fDetail.skills.length > 4 && (
                             <span className="text-[9px] text-gray-400 font-bold self-center ml-1">+{fDetail.skills.length - 4} more</span>
                           )}
                         </div>
 
                       </div>
 
-                      {/* BOTTOM ROW METRICS */}
-                      <div className="mt-5 pt-4 border-t border-gray-50 flex items-center justify-between">
+                      {/* BOTTOM ROW METRICS & ACTIONS */}
+                      <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-2">
                         
                         <div>
                           <div className="text-[10px] text-gray-400 font-bold uppercase font-mono">Commission rate</div>
@@ -207,13 +221,25 @@ export const BrowseFreelancersView: React.FC = () => {
                           </div>
                         </div>
 
-                        <button 
-                          onClick={() => onNavigate('freelancer_profile', { userId: fDetail.freelancer_id })}
-                          className="px-4 py-2 bg-primary-blue hover:bg-blue-950 text-white font-bold text-xs rounded-lg transition shadow-sm flex items-center space-x-1"
-                        >
-                          <span>Review Crew</span>
-                          <ArrowRight className="w-3 h-3 text-white" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => onNavigate('chat', { otherUserId: fDetail.freelancer_id })}
+                            className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-primary-blue font-bold text-xs rounded-xl transition flex items-center space-x-1.5 border border-blue-200/60"
+                            title={`Message ${user.full_name}`}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-primary-blue" />
+                            <span>Message</span>
+                          </button>
+
+                          <button 
+                            onClick={() => onNavigate('freelancer_profile', { userId: fDetail.freelancer_id })}
+                            className="px-3.5 py-2 bg-primary-blue hover:bg-blue-900 text-white font-bold text-xs rounded-xl transition shadow-sm flex items-center space-x-1"
+                            title={`View ${user.full_name}'s full profile & portfolio`}
+                          >
+                            <span>View Profile</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
 
                       </div>
 

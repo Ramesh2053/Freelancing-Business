@@ -59,6 +59,15 @@ function AppContent() {
       // Basic route splitter
       const parts = cleanPage.split('?');
       const pageId = parts[0] || 'home';
+
+      if (parts[1]) {
+        const urlParams = new URLSearchParams(parts[1]);
+        const parsed: Record<string, string> = {};
+        urlParams.forEach((val, key) => {
+          parsed[key] = val;
+        });
+        setNavigationParams(prev => ({ ...parsed, ...(prev || {}) }));
+      }
       
       setCurrentPage(pageId);
     };
@@ -72,7 +81,16 @@ function AppContent() {
   const handleNavigate = (page: string, params?: any) => {
     setNavigationParams(params || null);
     setCurrentPage(page);
-    window.location.hash = page;
+    let hashTarget = page;
+    if (params && Object.keys(params).length > 0) {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) sp.set(k, String(v));
+      });
+      const q = sp.toString();
+      if (q) hashTarget += `?${q}`;
+    }
+    window.location.hash = hashTarget;
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
@@ -118,7 +136,14 @@ function AppContent() {
       case 'job_details':
         return <JobDetailsView onNavigate={handleNavigate} jobId={navigationParams?.jobId || 'job_1'} />;
       case 'freelancer_profile':
-        return <FreelancerProfileView onNavigate={handleNavigate} userId={navigationParams?.userId || 'user_f1'} />;
+        return (
+          <FreelancerProfileView 
+            onNavigate={handleNavigate} 
+            userId={navigationParams?.userId || (currentUser?.role === 'freelancer' ? currentUser.user_id : 'user_f1')} 
+            openReview={navigationParams?.openReview === true || navigationParams?.openReview === 'true'}
+            openMessage={navigationParams?.openMessage === true || navigationParams?.openMessage === 'true'}
+          />
+        );
       case 'client_profile':
         return <ClientProfileView onNavigate={handleNavigate} userId={navigationParams?.userId || 'user_c1'} />;
 

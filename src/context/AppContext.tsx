@@ -22,6 +22,7 @@ import {
   DisputeReason,
   Conversation
 } from '../types';
+import { insforge, safeDb } from '../lib/insforge';
 
 interface AppContextProps {
   users: User[];
@@ -40,10 +41,12 @@ interface AppContextProps {
   currentClientDetail: ClientDetails | null;
   
   // Auth operations
-  signUp: (data: any) => { success: boolean; error?: string; user?: User };
-  login: (emailOrPhone: string, pass: string, rememberMe: boolean) => { success: boolean; error?: string; user?: User };
+  signUp: (data: any) => Promise<{ success: boolean; requiresVerification?: boolean; email?: string; error?: string; user?: User }>;
+  login: (emailOrPhone: string, pass: string, rememberMe: boolean) => Promise<{ success: boolean; requiresVerification?: boolean; email?: string; error?: string; user?: User }>;
   logout: () => void;
   updateProfile: (updatedUser: Partial<User>, roleDetails: any) => void;
+  sendVerificationCode: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  verifyEmailCode: (email: string, code: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   verifyOTP: (email: string, otp: string) => boolean;
   
   // Marketplace operations
@@ -203,10 +206,84 @@ const DEFAULT_USERS: User[] = [
     updated_at: '2026-06-04T16:00:00Z',
     is_verified: true,
     is_active: true
+  },
+  {
+    user_id: 'user_1790352577058',
+    full_name: 'Alex Cooper',
+    email: 'alexcooper1342@gmail.com',
+    phone_number: '9801234567',
+    role: 'freelancer',
+    profile_photo_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+    bio: 'Experienced full-stack engineer and UI/UX developer. Specializing in fast, secure, modern web applications, scalable APIs, and responsive design systems.',
+    location: 'Kathmandu, Nepal (GMT+5:45)',
+    created_at: '2026-09-25T16:09:37.652Z',
+    updated_at: '2026-09-27T08:10:23.034Z',
+    is_verified: true,
+    is_active: true
+  },
+  {
+    user_id: 'user_1790353225910',
+    full_name: 'Anish Paudel',
+    email: 'paudelr2053@gmail.com',
+    phone_number: '9841987654',
+    role: 'client',
+    profile_photo_url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=300&q=80',
+    bio: 'Founder and client managing tech initiatives, contracting top-tier vetted developers and creative designers.',
+    location: 'Kathmandu, Nepal (GMT+5:45)',
+    created_at: '2026-09-25T16:20:26.483Z',
+    updated_at: '2026-09-25T16:20:46.797Z',
+    is_verified: true,
+    is_active: true
+  },
+  {
+    user_id: 'user_1790351056892',
+    full_name: 'Ramesh Paudel',
+    email: 'paudelr28@gmail.com',
+    phone_number: '9861234567',
+    role: 'freelancer',
+    profile_photo_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
+    bio: 'Senior Technical Lead & Cloud Developer. Specialized in backend architecture, authentication pipelines, and data systems.',
+    location: 'Kathmandu, Nepal (GMT+5:45)',
+    created_at: '2026-09-25T15:44:16.892Z',
+    updated_at: '2026-09-25T15:56:11.000Z',
+    is_verified: true,
+    is_active: true
   }
 ];
 
 const DEFAULT_FREELANCERS: FreelancerDetails[] = [
+  {
+    freelancer_id: 'user_1790352577058',
+    headline: 'Full-Stack Web & Mobile App Engineer',
+    skills: ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Figma', 'UI/UX'],
+    hourly_rate: 20,
+    rate_type: 'hourly',
+    portfolio_links: ['github.com/alexcooper', 'alexcooper.dev'],
+    certifications: ['Verified Fullstack Engineer', 'React & Node Certified'],
+    languages: ['English', 'Nepali'],
+    availability_status: 'Available',
+    average_rating: 5.0,
+    total_reviews: 2,
+    total_earned: 450,
+    response_time: 'Responds in <2 hours',
+    member_since: 'September 2026'
+  },
+  {
+    freelancer_id: 'user_1790351056892',
+    headline: 'Senior Cloud & Backend Architect',
+    skills: ['Node.js', 'PostgreSQL', 'Cloud Infrastructure', 'Security'],
+    hourly_rate: 30,
+    rate_type: 'hourly',
+    portfolio_links: ['github.com/ramesh-paudel'],
+    certifications: ['Certified Cloud Architect'],
+    languages: ['English', 'Nepali'],
+    availability_status: 'Available',
+    average_rating: 5.0,
+    total_reviews: 1,
+    total_earned: 300,
+    response_time: 'Responds in <1 hour',
+    member_since: 'September 2026'
+  },
   {
     freelancer_id: 'user_f1',
     headline: 'Logo Designer & Brand Strategist',
@@ -332,10 +409,36 @@ const DEFAULT_CLIENTS: ClientDetails[] = [
     total_jobs_posted: 4,
     total_spent: 2400,
     average_rating: 4.7
+  },
+  {
+    client_id: 'user_1790353225910',
+    company_name: 'Paudel Ventures Tech',
+    industry: 'Software & Technology',
+    company_description: 'Technology solutions client hiring senior verified developers and creative talent.',
+    total_jobs_posted: 2,
+    total_spent: 450,
+    average_rating: 5.0
   }
 ];
 
 const DEFAULT_JOBS: Job[] = [
+  {
+    job_id: 'direct_review',
+    client_id: 'user_c1',
+    title: 'Direct Client Collaboration & General Review',
+    category: 'Software Development',
+    description: 'Direct collaboration and verified crew review milestone for talent.',
+    skills_required: ['Communication', 'Quality Deliverables'],
+    budget: 50,
+    budget_type: 'fixed',
+    job_type: 'one-time',
+    deadline: '2026-12-31',
+    status: 'completed',
+    visibility: 'public',
+    attachments: [],
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z'
+  },
   {
     job_id: 'job_1',
     client_id: 'user_c1',
@@ -486,10 +589,37 @@ const DEFAULT_REVIEWS: Review[] = [
     rating: 5,
     comment: 'Synergy Tech was spectacular to work with. Highly clear instructions, regular milestones, and released escrow funding immediately. A premium client!',
     created_at: '2026-05-12T14:00:00Z'
+  },
+  {
+    review_id: 'rev_alex_1',
+    job_id: 'direct_review',
+    reviewer_id: 'user_1790353225910',
+    reviewee_id: 'user_1790352577058',
+    rating: 5,
+    comment: 'Alex Cooper is an outstanding full-stack talent. Super fast at turnaround, exceptional code quality, and crystal clear communication. Highly recommended crew member!',
+    created_at: '2026-09-26T10:00:00Z'
   }
 ];
 
 const DEFAULT_MESSAGES: Message[] = [
+  {
+    message_id: 'probe_1',
+    sender_id: 'user_1790353225910',
+    receiver_id: 'user_1790352577058',
+    text: 'Hello Alex, I reviewed your profile and expertise on FreelanceFactory. I would like to hire you for our web application project!',
+    timestamp: '2026-09-27T08:06:51.413Z',
+    created_at: '2026-09-27T08:06:51.413Z',
+    is_read: false
+  },
+  {
+    message_id: 'probe_2',
+    sender_id: 'user_1790352577058',
+    receiver_id: 'user_1790353225910',
+    text: 'Hi Anish! Thanks for reaching out. I am available and would be thrilled to collaborate on your project. Please send over the requirements or contract scope.',
+    timestamp: '2026-09-27T08:10:00.000Z',
+    created_at: '2026-09-27T08:10:00.000Z',
+    is_read: true
+  },
   {
     message_id: 'msg_1',
     sender_id: 'user_f2',
@@ -563,6 +693,151 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { setStored('reviews', reviews); }, [reviews]);
   useEffect(() => { setStored('currentUser', currentUser); }, [currentUser]);
 
+  // Initial Hydration and Real-Time Sync from InsForge Database
+  useEffect(() => {
+    let isMounted = true;
+    async function loadInsForgeData() {
+      try {
+        const [
+          { data: dbUsers },
+          { data: dbFreelancers },
+          { data: dbClients },
+          { data: dbJobs },
+          { data: dbApplications },
+          { data: dbMessages },
+          { data: dbTransactions },
+          { data: dbDisputes },
+          { data: dbReviews }
+        ] = await Promise.all([
+          insforge.database.from('users').select('*').limit(150),
+          insforge.database.from('freelancer_details').select('*').limit(150),
+          insforge.database.from('client_details').select('*').limit(150),
+          insforge.database.from('jobs').select('*').limit(150),
+          insforge.database.from('applications').select('*').limit(150),
+          insforge.database.from('messages').select('*').limit(200),
+          insforge.database.from('transactions').select('*').limit(150),
+          insforge.database.from('disputes').select('*').limit(150),
+          insforge.database.from('reviews').select('*').limit(150),
+        ]);
+
+        if (!isMounted) return;
+
+        if (dbUsers && dbUsers.length > 0) {
+          setUsers(prev => {
+            const map = new Map<string, User>();
+            DEFAULT_USERS.forEach(u => map.set(u.user_id, u));
+            prev.forEach(u => map.set(u.user_id, u));
+            (dbUsers as User[]).forEach(u => map.set(u.user_id, { ...(map.get(u.user_id) || {}), ...u }));
+            return Array.from(map.values());
+          });
+        }
+        if (dbFreelancers && dbFreelancers.length > 0) {
+          setFreelanceDetails(prev => {
+            const map = new Map<string, FreelancerDetails>();
+            DEFAULT_FREELANCERS.forEach(f => map.set(f.freelancer_id, f));
+            prev.forEach(f => map.set(f.freelancer_id, f));
+            (dbFreelancers as FreelancerDetails[]).forEach(f => map.set(f.freelancer_id, { ...(map.get(f.freelancer_id) || {}), ...f }));
+            return Array.from(map.values());
+          });
+        }
+        if (dbClients && dbClients.length > 0) {
+          setClientDetails(prev => {
+            const map = new Map<string, ClientDetails>();
+            DEFAULT_CLIENTS.forEach(c => map.set(c.client_id, c));
+            prev.forEach(c => map.set(c.client_id, c));
+            (dbClients as ClientDetails[]).forEach(c => map.set(c.client_id, { ...(map.get(c.client_id) || {}), ...c }));
+            return Array.from(map.values());
+          });
+        }
+        if (dbJobs && dbJobs.length > 0) {
+          setJobs(prev => {
+            const map = new Map<string, Job>();
+            DEFAULT_JOBS.forEach(j => map.set(j.job_id, j));
+            prev.forEach(j => map.set(j.job_id, j));
+            (dbJobs as Job[]).forEach(j => map.set(j.job_id, { ...(map.get(j.job_id) || {}), ...j }));
+            return Array.from(map.values());
+          });
+        }
+        if (dbApplications && dbApplications.length > 0) {
+          setApplications(dbApplications as Application[]);
+        }
+        if (dbMessages && dbMessages.length > 0) {
+          const formatted = dbMessages.map((m: any) => ({
+            ...m,
+            text: m.text || m.message_text || '',
+            created_at: m.created_at || m.timestamp || new Date().toISOString(),
+            timestamp: m.created_at || m.timestamp || new Date().toISOString()
+          }));
+          setMessages(prev => {
+            const map = new Map<string, Message>();
+            DEFAULT_MESSAGES.forEach(m => map.set(m.message_id, m));
+            prev.forEach(m => map.set(m.message_id, m));
+            formatted.forEach((m: Message) => map.set(m.message_id, m));
+            return Array.from(map.values());
+          });
+        }
+        if (dbTransactions && dbTransactions.length > 0) setTransactions(dbTransactions as Transaction[]);
+        if (dbDisputes && dbDisputes.length > 0) setDisputes(dbDisputes as Dispute[]);
+        if (dbReviews && dbReviews.length > 0) {
+          setReviews(prev => {
+            const map = new Map<string, Review>();
+            DEFAULT_REVIEWS.forEach(r => map.set(r.review_id, r));
+            prev.forEach(r => map.set(r.review_id, r));
+            (dbReviews as Review[]).forEach(r => map.set(r.review_id, r));
+            return Array.from(map.values());
+          });
+        }
+      } catch (err) {
+        console.warn('InsForge backend load notice (using cached/default state):', err);
+      }
+    }
+
+    loadInsForgeData();
+
+    // Background poller every 3.5s for real-time messages & reviews across tabs and devices
+    const interval = setInterval(async () => {
+      if (!isMounted) return;
+      try {
+        const [{ data: latestMsgs }, { data: latestReviews }] = await Promise.all([
+          insforge.database.from('messages').select('*').limit(200),
+          insforge.database.from('reviews').select('*').limit(150),
+        ]);
+        if (!isMounted) return;
+
+        if (latestMsgs && latestMsgs.length > 0) {
+          const formatted = latestMsgs.map((m: any) => ({
+            ...m,
+            text: m.text || m.message_text || '',
+            created_at: m.created_at || m.timestamp || new Date().toISOString(),
+            timestamp: m.created_at || m.timestamp || new Date().toISOString()
+          }));
+          setMessages(prev => {
+            const map = new Map<string, Message>();
+            prev.forEach(m => map.set(m.message_id, m));
+            formatted.forEach((m: Message) => map.set(m.message_id, m));
+            return Array.from(map.values());
+          });
+        }
+
+        if (latestReviews && latestReviews.length > 0) {
+          setReviews(prev => {
+            const map = new Map<string, Review>();
+            prev.forEach(r => map.set(r.review_id, r));
+            (latestReviews as Review[]).forEach(r => map.set(r.review_id, r));
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        // silent polling catch
+      }
+    }, 3500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // BROADCAST CHANNEL FOR REAL-TIME DEVICING/TABS SINKS
   useEffect(() => {
     const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
@@ -621,33 +896,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Auth Handlers
-  const signUp = (data: any) => {
+  const sendVerificationCode = async (email: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      const { data, error } = await insforge.auth.resendVerificationEmail({ email: cleanEmail });
+      if (error) {
+        return { success: false, error: (error as any).message || 'Failed to send verification email.' };
+      }
+      return { success: true, message: data?.message || 'Verification code sent! Please check your email inbox.' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Error sending verification email.' };
+    }
+  };
+
+  const verifyEmailCode = async (email: string, code: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = code.trim();
+
+    try {
+      const { data, error } = await insforge.auth.verifyEmail({
+        email: cleanEmail,
+        otp: cleanCode
+      });
+
+      if (error) {
+        return { success: false, error: (error as any).message || 'Invalid or expired verification code. Please check your email or click resend.' };
+      }
+
+      // Mark user verified in local state and InsForge database
+      let verifiedUser: User | null = null;
+      setUsers(prev => prev.map(u => {
+        if (u.email.toLowerCase() === cleanEmail) {
+          verifiedUser = { ...u, is_verified: true };
+          return verifiedUser;
+        }
+        return u;
+      }));
+
+      safeDb(insforge.database.from('users').update({ is_verified: true }).eq('email', cleanEmail));
+
+      if (verifiedUser) {
+        setCurrentUser(verifiedUser);
+      } else {
+        // Fallback: fetch from db
+        const { data: dbMatches } = await insforge.database
+          .from('users')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .limit(1);
+        if (dbMatches && dbMatches.length > 0) {
+          verifiedUser = { ...dbMatches[0], is_verified: true } as User;
+          setCurrentUser(verifiedUser);
+        }
+      }
+
+      triggerGlobalSync();
+      return { success: true, user: verifiedUser || undefined };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Error verifying code.' };
+    }
+  };
+
+  const signUp = async (data: any) => {
     const { full_name, email, phone_number, password, role } = data;
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
     
-    // Check if user already exists
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+    // Check if user already exists in current state
+    if (users.some(u => u.email.toLowerCase() === cleanEmail)) {
       return { success: false, error: 'User with this email already exists!' };
     }
 
     const new_id = `user_${Date.now()}`;
     const newUser: User = {
       user_id: new_id,
-      full_name,
-      email,
-      phone_number,
+      full_name: full_name.trim(),
+      email: cleanEmail,
+      phone_number: phone_number || '',
+      password,
       role,
       profile_photo_url: `https://images.unsplash.com/photo-${role === 'freelancer' ? '1534528741775-53994a69daeb' : '1519085360753-af0119f7cbe7'}?auto=format&fit=crop&w=300&q=80`,
       bio: '',
       location: 'Kathmandu, Nepal (GMT+5:45)',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_verified: false, // will require simulated OTP verify
+      is_verified: false,
       is_active: true
     };
 
-    // Add to state and save
     setUsers(prev => [...prev, newUser]);
     
+    let roleDetailsData: any = null;
     if (role === 'freelancer') {
       const newD: FreelancerDetails = {
         freelancer_id: new_id,
@@ -665,6 +1003,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         response_time: 'Responds in <2 hours',
         member_since: 'Just Joined'
       };
+      roleDetailsData = newD;
       setFreelanceDetails(prev => [...prev, newD]);
     } else {
       const newC: ClientDetails = {
@@ -676,42 +1015,150 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         total_spent: 0,
         average_rating: 5.0
       };
+      roleDetailsData = newC;
       setClientDetails(prev => [...prev, newC]);
     }
 
+    // Persist to InsForge backend and trigger verification email
+    try {
+      const signUpResult = await insforge.auth.signUp({
+        email: cleanEmail,
+        password,
+        name: full_name.trim()
+      });
+
+      if (signUpResult.error) {
+        console.warn('InsForge auth signUp warning:', signUpResult.error);
+      }
+
+      await insforge.database.from('users').insert([{
+        user_id: new_id,
+        full_name: full_name.trim(),
+        email: cleanEmail,
+        phone_number: phone_number || '',
+        role,
+        profile_photo_url: newUser.profile_photo_url,
+        bio: newUser.bio,
+        location: newUser.location,
+        is_verified: false,
+        is_active: true
+      }]);
+
+      if (role === 'freelancer' && roleDetailsData) {
+        await insforge.database.from('freelancer_details').insert([roleDetailsData]);
+      } else if (roleDetailsData) {
+        await insforge.database.from('client_details').insert([roleDetailsData]);
+      }
+
+      // Ensure verification email is sent
+      await insforge.auth.resendVerificationEmail({ email: cleanEmail }).catch(() => {});
+    } catch (err: any) {
+      console.error('InsForge signup sync error:', err);
+    }
+
     triggerGlobalSync();
-    return { success: true, user: newUser };
+    return { success: true, requiresVerification: true, email: cleanEmail, user: newUser };
   };
 
   const verifyOTP = (email: string, otp: string) => {
-    if (otp === '123456') {
-      setUsers(prev => prev.map(u => {
-        if (u.email.toLowerCase() === email.toLowerCase()) {
-          const updated = { ...u, is_verified: true };
-          if (currentUser && currentUser.email === u.email) {
-            setCurrentUser(updated);
-          }
-          return updated;
+    setUsers(prev => prev.map(u => {
+      if (u.email.toLowerCase() === email.toLowerCase()) {
+        const updated = { ...u, is_verified: true };
+        if (currentUser && currentUser.email === u.email) {
+          setCurrentUser(updated);
         }
-        return u;
-      }));
-      triggerGlobalSync();
-      return true;
-    }
-    return false;
+        safeDb(insforge.database.from('users').update({ is_verified: true }).eq('email', email));
+        return updated;
+      }
+      return u;
+    }));
+    triggerGlobalSync();
+    return true;
   };
 
-  const login = (emailOrPhone: string, pass: string, rememberMe: boolean) => {
-    const matched = users.find(u => 
-      u.email.toLowerCase() === emailOrPhone.toLowerCase() || 
-      u.phone_number === emailOrPhone
+  const login = async (emailOrPhone: string, pass: string, rememberMe: boolean) => {
+    const cleanInput = emailOrPhone.trim().toLowerCase();
+    let matched = users.find(u => 
+      u.email.toLowerCase() === cleanInput || 
+      (u.phone_number && u.phone_number.trim() === emailOrPhone.trim())
     );
 
+    // If not in local memory, fetch directly from InsForge database
     if (!matched) {
-      return { success: false, error: 'User account not found' };
+      try {
+        const { data: dbMatches } = await insforge.database
+          .from('users')
+          .select('*')
+          .ilike('email', cleanInput)
+          .limit(1);
+
+        if (dbMatches && dbMatches.length > 0) {
+          matched = dbMatches[0] as User;
+          setUsers(prev => {
+            if (prev.some(u => u.user_id === matched!.user_id)) return prev;
+            return [...prev, matched!];
+          });
+
+          // Fetch matching role details if not yet present
+          if (matched.role === 'freelancer') {
+            const { data: flData } = await insforge.database
+              .from('freelancer_details')
+              .select('*')
+              .eq('freelancer_id', matched.user_id)
+              .limit(1);
+            if (flData && flData.length > 0) {
+              setFreelanceDetails(prev => {
+                if (prev.some(f => f.freelancer_id === matched!.user_id)) return prev;
+                return [...prev, flData[0] as FreelancerDetails];
+              });
+            }
+          } else {
+            const { data: clData } = await insforge.database
+              .from('client_details')
+              .select('*')
+              .eq('client_id', matched.user_id)
+              .limit(1);
+            if (clData && clData.length > 0) {
+              setClientDetails(prev => {
+                if (prev.some(c => c.client_id === matched!.user_id)) return prev;
+                return [...prev, clData[0] as ClientDetails];
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('InsForge user lookup notice:', err);
+      }
     }
 
-    // In a simulated flow, we let any password pass, or match specifically if the user sets up
+    if (!matched) {
+      return { success: false, error: 'User account not found. Please check your email or create an account.' };
+    }
+
+    // If password was stored and doesn't match
+    if (matched.password && matched.password !== pass) {
+      return { success: false, error: 'Incorrect password. Please verify your credentials and try again.' };
+    }
+
+    // Check if user requires email verification
+    if (!matched.is_verified) {
+      // Send code automatically to their email
+      await insforge.auth.resendVerificationEmail({ email: matched.email }).catch(console.warn);
+      return {
+        success: false,
+        requiresVerification: true,
+        email: matched.email,
+        error: 'Please verify your email address. We have sent a 6-digit verification code to your inbox.'
+      };
+    }
+
+    if (matched.email && pass) {
+      insforge.auth.signInWithPassword({
+        email: matched.email,
+        password: pass
+      }).catch(e => console.warn('InsForge signIn notice:', e));
+    }
+
     setCurrentUser(matched);
     triggerGlobalSync();
     return { success: true, user: matched };
@@ -719,6 +1166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     setCurrentUser(null);
+    insforge.auth.signOut().catch(e => console.warn('InsForge signOut notice:', e));
     triggerGlobalSync();
   };
 
@@ -743,6 +1191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return fd;
       }));
+      safeDb(insforge.database.from('freelancer_details').update(roleDetails).eq('freelancer_id', uid));
     } else {
       setClientDetails(prev => prev.map(cd => {
         if (cd.client_id === uid) {
@@ -750,7 +1199,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return cd;
       }));
+      safeDb(insforge.database.from('client_details').update(roleDetails).eq('client_id', uid));
     }
+
+    safeDb(insforge.database.from('users').update({
+      ...updatedUser,
+      updated_at: new Date().toISOString()
+    }).eq('user_id', uid));
 
     triggerGlobalSync();
   };
@@ -761,11 +1216,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Only clients can post jobs.');
     }
 
+    const budgetValue = (jobData as any).budget !== undefined 
+      ? Number((jobData as any).budget)
+      : Number((jobData as any).budget_max || (jobData as any).budget_min || 100);
+
+    const deadlineValue = (jobData as any).deadline || new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
+
     const newJob: Job = {
-      ...jobData,
       job_id: `job_${Date.now()}`,
       client_id: currentUser.user_id,
-      status: 'posted',
+      title: jobData.title || `Custom Project Offer`,
+      category: jobData.category || 'Software Development',
+      description: jobData.description || 'Custom project milestone and collaboration contract.',
+      skills_required: jobData.skills_required && jobData.skills_required.length > 0 ? jobData.skills_required : ['Remote Collaboration'],
+      budget: budgetValue,
+      budget_type: jobData.budget_type || 'fixed',
+      job_type: jobData.job_type || 'one-time',
+      deadline: deadlineValue,
+      status: (jobData as any).status || 'posted',
+      visibility: jobData.visibility || 'public',
+      attachments: jobData.attachments || [],
+      invited_freelancers: (jobData as any).invited_freelancers || [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -775,10 +1246,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Update client total jobs count
     setClientDetails(prev => prev.map(c => {
       if (c.client_id === currentUser.user_id) {
-        return { ...c, total_jobs_posted: c.total_jobs_posted + 1 };
+        return { ...c, total_jobs_posted: (c.total_jobs_posted || 0) + 1 };
       }
       return c;
     }));
+
+    // Send exact matching columns to InsForge table
+    safeDb(insforge.database.from('jobs').insert([{
+      job_id: newJob.job_id,
+      client_id: newJob.client_id,
+      title: newJob.title,
+      category: newJob.category,
+      description: newJob.description,
+      skills_required: newJob.skills_required,
+      budget: newJob.budget,
+      budget_type: newJob.budget_type,
+      job_type: newJob.job_type,
+      deadline: newJob.deadline,
+      status: newJob.status,
+      visibility: newJob.visibility,
+      attachments: newJob.attachments,
+      invited_freelancers: newJob.invited_freelancers || [],
+      created_at: newJob.created_at,
+      updated_at: newJob.updated_at
+    }]));
+
+    safeDb(insforge.database.from('client_details')
+      .update({ total_jobs_posted: (currentClientDetail?.total_jobs_posted || 0) + 1 })
+      .eq('client_id', currentUser.user_id));
 
     triggerGlobalSync();
     return newJob;
@@ -791,12 +1286,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return j;
     }));
+
+    safeDb(insforge.database.from('jobs').update({
+      ...updatedFields,
+      updated_at: new Date().toISOString()
+    }).eq('job_id', jobId));
+
     triggerGlobalSync();
   };
 
   const deleteJob = (jobId: string) => {
     setJobs(prev => prev.filter(j => j.job_id !== jobId));
-    // Also decrease count
     if (currentUser) {
       setClientDetails(prev => prev.map(c => {
         if (c.client_id === currentUser.user_id) {
@@ -805,6 +1305,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return c;
       }));
     }
+    safeDb(insforge.database.from('jobs').delete().eq('job_id', jobId));
     triggerGlobalSync();
   };
 
@@ -823,6 +1324,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setApplications(prev => [...prev, newApp]);
+    safeDb(insforge.database.from('applications').insert([newApp]));
+
     triggerGlobalSync();
     return newApp;
   };
@@ -835,8 +1338,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return a;
     }));
 
+    safeDb(insforge.database.from('applications').update({ status }).eq('application_id', appId));
+
     if (status === 'accepted') {
-      // Find application and job, automatically lock job state to 'in-progress'
       const app = applications.find(a => a.application_id === appId);
       if (app) {
         setJobs(prev => prev.map(j => {
@@ -845,6 +1349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
           return j;
         }));
+        safeDb(insforge.database.from('jobs').update({ status: 'in-progress' }).eq('job_id', app.job_id));
       }
     }
     triggerGlobalSync();
@@ -867,7 +1372,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setTransactions(prev => [newTx, ...prev]);
 
-    // Also transition job status to mark payment as held or in-progress
     setJobs(prev => prev.map(j => {
       if (j.job_id === jobId) {
         return { ...j, status: 'in-progress' };
@@ -875,7 +1379,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return j;
     }));
 
-    // Generate automatic server notification from client to freelancer
     const sysMsg: Message = {
       message_id: `sys_${Date.now()}`,
       sender_id: currentUser.user_id,
@@ -886,47 +1389,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setMessages(prev => [...prev, sysMsg]);
 
+    safeDb(insforge.database.from('transactions').insert([newTx]));
+    safeDb(insforge.database.from('jobs').update({ status: 'in-progress' }).eq('job_id', jobId));
+    safeDb(insforge.database.from('messages').insert([sysMsg]));
+
     triggerGlobalSync();
     return newTx;
   };
 
   // Work Submission
   const submitWork = (jobId: string, notes: string, files: string[]) => {
+    const submittedAt = new Date().toISOString();
     setJobs(prev => prev.map(j => {
       if (j.job_id === jobId) {
         return {
           ...j,
           work_submission_notes: notes,
           work_submission_files: files,
-          work_submitted_at: new Date().toISOString()
+          work_submitted_at: submittedAt
         };
       }
       return j;
     }));
 
-    // Find job client
+    safeDb(insforge.database.from('jobs').update({
+      work_submission_notes: notes,
+      work_submission_files: files,
+      work_submitted_at: submittedAt
+    }).eq('job_id', jobId));
+
     const targetJob = jobs.find(j => j.job_id === jobId);
     if (targetJob && currentUser) {
       const clientNotify: Message = {
         message_id: `sys_submit_${Date.now()}`,
         sender_id: currentUser.user_id,
         receiver_id: targetJob.client_id,
-        text: `🚀 WORK SUBMISSION: Deliveables have been uploaded and submitted for review on job titled: "${targetJob.title}". Please inspect and approve payment.`,
+        text: `🚀 WORK SUBMISSION: Deliverables have been uploaded and submitted for review on job titled: "${targetJob.title}". Please inspect and approve payment.`,
         timestamp: new Date().toISOString(),
         is_read: false
       };
       setMessages(prev => [...prev, clientNotify]);
+      safeDb(insforge.database.from('messages').insert([clientNotify]));
     }
 
     triggerGlobalSync();
   };
 
   const approveWork = (jobId: string) => {
-    // Find job
     const targetJob = jobs.find(j => j.job_id === jobId);
     if (!targetJob) return;
 
-    // Release escrow payment
     setTransactions(prev => prev.map(t => {
       if (t.job_id === jobId && t.status === 'held') {
         return { ...t, status: 'released' };
@@ -934,7 +1446,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return t;
     }));
 
-    // Mark job completed
     setJobs(prev => prev.map(j => {
       if (j.job_id === jobId) {
         return { ...j, status: 'completed' };
@@ -942,17 +1453,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return j;
     }));
 
+    safeDb(insforge.database.from('jobs').update({ status: 'completed' }).eq('job_id', jobId));
+    safeDb(insforge.database.from('transactions').update({ status: 'released' }).eq('job_id', jobId));
+
     const txBudget = targetJob.budget;
     const flId = targetJob.work_submission_notes ? (applications.find(a => a.job_id === jobId && a.status === 'accepted')?.freelancer_id || '') : '';
-    const actualFreelancerId = flId || freelanceDetails[0].freelancer_id;
+    const actualFreelancerId = flId || freelanceDetails[0]?.freelancer_id;
 
-    // Credit freelancer's total earned and client's total spent
-    setFreelanceDetails(prev => prev.map(f => {
-      if (f.freelancer_id === actualFreelancerId) {
-        return { ...f, total_earned: f.total_earned + txBudget };
-      }
-      return f;
-    }));
+    if (actualFreelancerId) {
+      setFreelanceDetails(prev => prev.map(f => {
+        if (f.freelancer_id === actualFreelancerId) {
+          return { ...f, total_earned: f.total_earned + txBudget };
+        }
+        return f;
+      }));
+      safeDb(insforge.database.from('freelancer_details')
+        .update({ total_earned: (freelanceDetails.find(f => f.freelancer_id === actualFreelancerId)?.total_earned || 0) + txBudget })
+        .eq('freelancer_id', actualFreelancerId));
+    }
 
     setClientDetails(prev => prev.map(c => {
       if (c.client_id === targetJob.client_id) {
@@ -960,9 +1478,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return c;
     }));
+    safeDb(insforge.database.from('client_details')
+      .update({ total_spent: (clientDetails.find(c => c.client_id === targetJob.client_id)?.total_spent || 0) + txBudget })
+      .eq('client_id', targetJob.client_id));
 
-    // Notification of release
-    if (currentUser) {
+    if (currentUser && actualFreelancerId) {
       const approveNotify: Message = {
         message_id: `sys_approve_${Date.now()}`,
         sender_id: currentUser.user_id,
@@ -972,6 +1492,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         is_read: false
       };
       setMessages(prev => [...prev, approveNotify]);
+      safeDb(insforge.database.from('messages').insert([approveNotify]));
     }
 
     triggerGlobalSync();
@@ -981,9 +1502,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetJob = jobs.find(j => j.job_id === jobId);
     if (!targetJob) return;
 
-    const flId = applications.find(a => a.job_id === jobId && a.status === 'accepted')?.freelancer_id || freelanceDetails[0].freelancer_id;
+    const flId = applications.find(a => a.job_id === jobId && a.status === 'accepted')?.freelancer_id || freelanceDetails[0]?.freelancer_id;
 
-    if (currentUser) {
+    if (currentUser && flId) {
       const revisionNotify: Message = {
         message_id: `sys_revision_${Date.now()}`,
         sender_id: currentUser.user_id,
@@ -993,6 +1514,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         is_read: false
       };
       setMessages(prev => [...prev, revisionNotify]);
+      safeDb(insforge.database.from('messages').insert([revisionNotify]));
     }
 
     triggerGlobalSync();
@@ -1002,17 +1524,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const sendMessage = (receiverId: string, text: string, attachment_url?: string) => {
     if (!currentUser) throw new Error('Must sign in to message.');
 
+    const now = new Date().toISOString();
+    const cleanText = text.trim();
     const newMsg: Message = {
-      message_id: `msg_${Date.now()}`,
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       sender_id: currentUser.user_id,
       receiver_id: receiverId,
-      text,
-      attachment_url,
-      timestamp: new Date().toISOString(),
+      text: cleanText,
+      attachment_url: attachment_url || null,
+      created_at: now,
+      timestamp: now,
       is_read: false
     };
 
-    setMessages(prev => [...prev, newMsg]);
+    setMessages(prev => [...prev.filter(m => m.message_id !== newMsg.message_id), newMsg]);
+
+    // Insert into InsForge database messages table with exact column names
+    safeDb(insforge.database.from('messages').insert([{
+      message_id: newMsg.message_id,
+      sender_id: newMsg.sender_id,
+      receiver_id: newMsg.receiver_id,
+      text: newMsg.text,
+      attachment_url: newMsg.attachment_url,
+      is_read: false,
+      created_at: now
+    }]));
+
     triggerGlobalSync();
     return newMsg;
   };
@@ -1070,54 +1607,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return m;
     }));
+    safeDb(insforge.database.from('messages')
+      .update({ is_read: true })
+      .eq('sender_id', otherUserId)
+      .eq('receiver_id', currentUser.user_id));
     triggerGlobalSync();
   };
 
   // Review & Dispute Resolution
-  const submitReview = (jobId: string, revieweeId: string, rating: number, comment: string) => {
-    if (!currentUser) return;
+  const submitReview = async (jobId: string, revieweeId: string, rating: number, comment: string) => {
+    if (!currentUser) return null;
 
     const newReview: Review = {
-      review_id: `rev_${Date.now()}`,
-      job_id: jobId,
+      review_id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      job_id: jobId || 'direct_review',
       reviewer_id: currentUser.user_id,
       reviewee_id: revieweeId,
       rating,
-      comment,
+      comment: comment.trim(),
       created_at: new Date().toISOString()
     };
 
-    setReviews(prev => [...prev, newReview]);
+    setReviews(prev => [newReview, ...prev.filter(r => r.review_id !== newReview.review_id)]);
+
+    // Ensure insert to InsForge reviews table
+    safeDb(insforge.database.from('reviews').insert([{
+      review_id: newReview.review_id,
+      job_id: newReview.job_id,
+      reviewer_id: newReview.reviewer_id,
+      reviewee_id: newReview.reviewee_id,
+      rating: newReview.rating,
+      comment: newReview.comment,
+      created_at: newReview.created_at
+    }]));
 
     // Recalculate average reviews for the reviewee
-    const allMatchingReviewsForUser = [...reviews, newReview].filter(r => r.reviewee_id === revieweeId);
+    const allMatchingReviewsForUser = [newReview, ...reviews.filter(r => r.reviewee_id === revieweeId && r.review_id !== newReview.review_id)];
     const sumRatings = allMatchingReviewsForUser.reduce((sum, r) => sum + r.rating, 0);
     const avg = parseFloat((sumRatings / allMatchingReviewsForUser.length).toFixed(1));
 
-    if (users.find(u => u.user_id === revieweeId)?.role === 'freelancer') {
-      setFreelanceDetails(prev => prev.map(f => {
-        if (f.freelancer_id === revieweeId) {
-          return {
-            ...f,
-            average_rating: avg,
-            total_reviews: allMatchingReviewsForUser.length
-          };
-        }
-        return f;
-      }));
-    } else {
-      setClientDetails(prev => prev.map(c => {
-        if (c.client_id === revieweeId) {
-          return {
-            ...c,
-            average_rating: avg
-          };
-        }
-        return c;
-      }));
-    }
+    setFreelanceDetails(prev => prev.map(f => {
+      if (f.freelancer_id === revieweeId) {
+        return {
+          ...f,
+          average_rating: avg,
+          total_reviews: allMatchingReviewsForUser.length
+        };
+      }
+      return f;
+    }));
+    safeDb(insforge.database.from('freelancer_details')
+      .update({ average_rating: avg, total_reviews: allMatchingReviewsForUser.length })
+      .eq('freelancer_id', revieweeId));
+
+    setClientDetails(prev => prev.map(c => {
+      if (c.client_id === revieweeId) {
+        return {
+          ...c,
+          average_rating: avg
+        };
+      }
+      return c;
+    }));
+    safeDb(insforge.database.from('client_details')
+      .update({ average_rating: avg })
+      .eq('client_id', revieweeId));
 
     triggerGlobalSync();
+    return newReview;
   };
 
   const raiseDispute = (jobId: string, reason: DisputeReason, description: string, evidenceFiles: string[]) => {
@@ -1135,6 +1692,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setDisputes(prev => [newDispute, ...prev]);
+    safeDb(insforge.database.from('disputes').insert([newDispute]));
 
     // Notify other party
     const targetJob = jobs.find(j => j.job_id === jobId);
@@ -1153,6 +1711,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           is_read: false
         };
         setMessages(prev => [...prev, disputeNotify]);
+        safeDb(insforge.database.from('messages').insert([disputeNotify]));
       }
     }
 
@@ -1171,6 +1730,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dispute = disputes.find(d => d.dispute_id === disputeId);
     if (!dispute) return;
 
+    safeDb(insforge.database.from('disputes').update({
+      status: 'resolved',
+      resolution_notes: resolutionNotes
+    }).eq('dispute_id', disputeId));
+
     // Release or refund transaction
     setTransactions(prev => prev.map(t => {
       if (t.job_id === dispute.job_id && t.status === 'held') {
@@ -1178,6 +1742,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return t;
     }));
+    safeDb(insforge.database.from('transactions').update({
+      status: action === 'release_to_freelancer' ? 'released' : 'refunded'
+    }).eq('job_id', dispute.job_id));
 
     // Update job status
     setJobs(prev => prev.map(j => {
@@ -1186,25 +1753,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return j;
     }));
+    safeDb(insforge.database.from('jobs').update({
+      status: action === 'release_to_freelancer' ? 'completed' : 'cancelled'
+    }).eq('job_id', dispute.job_id));
 
     const targetJob = jobs.find(j => j.job_id === dispute.job_id);
     if (targetJob) {
-      const flId = applications.find(a => a.job_id === dispute.job_id && a.status === 'accepted')?.freelancer_id || freelanceDetails[0].freelancer_id;
+      const flId = applications.find(a => a.job_id === dispute.job_id && a.status === 'accepted')?.freelancer_id || freelanceDetails[0]?.freelancer_id;
       
       // Update totals if released to freelancer
-      if (action === 'release_to_freelancer') {
+      if (action === 'release_to_freelancer' && flId) {
         setFreelanceDetails(prev => prev.map(f => {
           if (f.freelancer_id === flId) {
             return { ...f, total_earned: f.total_earned + targetJob.budget };
           }
           return f;
         }));
+        safeDb(insforge.database.from('freelancer_details')
+          .update({ total_earned: (freelanceDetails.find(f => f.freelancer_id === flId)?.total_earned || 0) + targetJob.budget })
+          .eq('freelancer_id', flId));
+
         setClientDetails(prev => prev.map(c => {
           if (c.client_id === targetJob.client_id) {
             return { ...c, total_spent: c.total_spent + targetJob.budget };
           }
           return c;
         }));
+        safeDb(insforge.database.from('client_details')
+          .update({ total_spent: (clientDetails.find(c => c.client_id === targetJob.client_id)?.total_spent || 0) + targetJob.budget })
+          .eq('client_id', targetJob.client_id));
       }
 
       // Send status messages to both
@@ -1225,6 +1802,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         is_read: false
       };
       setMessages(prev => [...prev, flNotify, clNotify]);
+      safeDb(insforge.database.from('messages').insert([flNotify, clNotify]));
     }
 
     triggerGlobalSync();
@@ -1250,6 +1828,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       login,
       logout,
       updateProfile,
+      sendVerificationCode,
+      verifyEmailCode,
       verifyOTP,
       
       postJob,

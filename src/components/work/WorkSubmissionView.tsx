@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Sparkles, Calendar, CheckCircle, ArrowLeft, Send, UploadCloud, Link2 } from 'lucide-react';
+import { Sparkles, Calendar, CheckCircle, ArrowLeft, Send, UploadCloud, Link2, Loader2, Check } from 'lucide-react';
+import { uploadToStorage } from '../../lib/insforge';
 
 interface WorkSubmissionViewProps {
   onNavigate: (page: string, params?: any) => void;
@@ -38,6 +39,20 @@ export const WorkSubmissionView: React.FC<WorkSubmissionViewProps> = ({ onNaviga
       : ''
   );
   const [success, setSuccess] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setUploading(true);
+      const res = await uploadToStorage(file, 'deliverables');
+      setUploading(false);
+      if (res?.url) {
+        setFileUrl(res.url);
+      }
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,11 +140,34 @@ export const WorkSubmissionView: React.FC<WorkSubmissionViewProps> = ({ onNaviga
               </div>
             </div>
 
-            {/* FILE UPLOAD DRAG DROP SIMULATED BLOCK */}
-            <div className="bg-gray-50 border-2 border-dashed border-gray-250 p-6 rounded-xl text-center space-y-1 hover:border-primary-blue transition cursor-pointer select-none" onClick={() => setFileUrl('deliverables_package_revised.zip')}>
-              <UploadCloud className="w-8 h-8 text-gray-400 mx-auto" />
-              <h4 className="text-xs font-bold text-gray-800">Simulate Manual attachment upload</h4>
-              <p className="text-[10px] text-gray-400">Click anywhere inside this block to automatically append file placeholder <span className="font-mono text-gray-650 font-bold">"deliverables_package_revised.zip"</span>!</p>
+            {/* FILE UPLOAD & STORAGE BLOCK */}
+            <div 
+              className="bg-gray-50 border-2 border-dashed border-gray-250 p-6 rounded-xl text-center space-y-2 hover:border-primary-blue transition cursor-pointer select-none"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input 
+                ref={fileInputRef} 
+                type="file" 
+                onChange={handleFileUpload} 
+                className="hidden" 
+              />
+              <div className="flex justify-center">
+                {uploading ? (
+                  <Loader2 className="w-8 h-8 text-primary-blue animate-spin" />
+                ) : (
+                  <UploadCloud className="w-8 h-8 text-gray-400" />
+                )}
+              </div>
+              <h4 className="text-xs font-bold text-gray-800">
+                {uploading ? 'Uploading to InsForge Storage...' : 'Upload deliverable to InsForge Storage'}
+              </h4>
+              <p className="text-[10px] text-gray-400">Click to select and upload any ZIP, document, or code file directly to InsForge Storage.</p>
+              {fileUrl && (
+                <div className="mt-2 text-xs text-green-700 bg-green-50 border border-green-200 py-1 px-2 rounded inline-flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" />
+                  <span className="truncate max-w-xs">{fileUrl}</span>
+                </div>
+              )}
             </div>
 
             {/* SEND CTA */}
